@@ -1,0 +1,38 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          mkdir -p _src
+          Z=$(ls *.zip | head -1)
+          python3 -m zipfile -e "$Z" _src || { echo "::error title=Unzip failed::$Z"; exit 1; }
+          echo "::notice title=Files::$(find _src -maxdepth 2 | tr '\n' '|')"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build APK
+        run: |
+          DIR=$(dirname "$(find _src -name settings.gradle.kts | head -1)")
+          cd "$DIR"
+          gradle assembleDebug > $GITHUB_WORKSPACE/build-log.txt 2>&1 || { echo "::error title=Build failed::$(grep -E 'e: |What went wrong|error:|FAILED' -A3 $GITHUB_WORKSPACE/build-log.txt | head -30 | tr '\n' '|')"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartTranslate-APK
+          path: _src/**/app-debug.apk
