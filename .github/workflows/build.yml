@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -12,8 +12,8 @@ jobs:
         run: |
           mkdir -p _src
           Z=$(ls *.zip | head -1)
-          python3 -m zipfile -e "$Z" _src || { echo "::error title=Unzip failed::$Z"; exit 1; }
-          echo "::notice title=Files::$(find _src -maxdepth 2 | tr '\n' '|')"
+          python3 -m zipfile -e "$Z" _src
+          echo "DIR=$(dirname "$(find _src -name settings.gradle.kts | head -1)")" >> $GITHUB_ENV
 
       - uses: actions/setup-java@v4
         with:
@@ -28,9 +28,17 @@ jobs:
 
       - name: Build APK
         run: |
-          DIR=$(dirname "$(find _src -name settings.gradle.kts | head -1)")
           cd "$DIR"
-          gradle assembleDebug > $GITHUB_WORKSPACE/build-log.txt 2>&1 || { echo "::error title=Build failed::$(grep -E 'e: |What went wrong|error:|FAILED' -A3 $GITHUB_WORKSPACE/build-log.txt | head -30 | tr '\n' '|')"; exit 1; }
+          gradle assembleDebug --stacktrace --no-daemon 2>&1 | tee $GITHUB_WORKSPACE/build-log.txt
+
+      - name: Show errors on summary page
+        if: always()
+        run: |
+          echo '### Build log (last lines)' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "^e: |What went wrong|error:|FAILURE|Could not|not found" -A4 build-log.txt | head -40 >> $GITHUB_STEP_SUMMARY || true
+          tail -15 build-log.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
         with:
